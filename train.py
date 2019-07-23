@@ -10,49 +10,60 @@ import test  # import test.py to get mAP after each epoch
 from models import *
 from utils.datasets import *
 from utils.utils import *
+from utils.adabound import *
 
-#      0.109      0.297       0.15      0.126       7.04      1.666      4.062     0.1845       42.6       3.34      12.61      8.338     0.2705      0.001         -4        0.9     0.0005   320 giou + best_anchor False
-#      0.223      0.218      0.138      0.189       9.28      1.153      4.376    0.08263      24.28       3.05      20.93      2.842     0.2759   0.001357     -5.036     0.9158  0.0005722   mAP/F1 - 50/50 weighting
-#      0.231      0.215      0.135      0.191       9.51      1.432      3.007    0.06082      24.87      3.477      24.13      2.802     0.3436   0.001127     -5.036     0.9232  0.0005874
-#      0.246      0.194      0.128      0.192       8.12      1.101      3.954     0.0817      22.83      3.967      19.83      1.779     0.3352   0.000895     -5.036     0.9238  0.0007973
-# 0.242	0.296	0.196	0.231	5.67	0.8541	4.286	0.1539	21.61	1.957	22.9	2.894	0.3689	0.001844	-4	0.913	0.000467  # ha
+# 320 --epochs 1
+#      0.109      0.297       0.15      0.126       7.04      1.666      4.062     0.1845       42.6       3.34      12.61      8.338     0.2705      0.001         -4        0.9     0.0005 a  320 giou + best_anchor False
+#      0.223      0.218      0.138      0.189       9.28      1.153      4.376    0.08263      24.28       3.05      20.93      2.842     0.2759   0.001357     -5.036     0.9158  0.0005722 b  mAP/F1 - 50/50 weighting
+#      0.231      0.215      0.135      0.191       9.51      1.432      3.007    0.06082      24.87      3.477      24.13      2.802     0.3436   0.001127     -5.036     0.9232  0.0005874 c
+#      0.246      0.194      0.128      0.192       8.12      1.101      3.954     0.0817      22.83      3.967      19.83      1.779     0.3352   0.000895     -5.036     0.9238  0.0007973 d
+#      0.187      0.237      0.144      0.186       14.6      1.607      4.202    0.09439      39.27      3.726      31.26      2.634      0.273   0.001542     -5.036     0.8364  0.0008393 e
+
+# 320 --epochs 2
+# 0.242	0.296	0.196	0.231	5.67	0.8541	4.286	0.1539	21.61	1.957	22.9	2.894	0.3689	0.001844	-4	0.913	0.000467  # ha 0.417 mAP @ epoch 100
 # 0.298	0.244	0.167	0.247	4.99	0.8896	4.067	0.1694	21.41	2.033	25.61	1.783	0.4115	0.00128	    -4	0.950	0.000377  # hb
 # 0.268	0.268	0.178	0.240	4.36	1.104	5.596	0.2087	14.47	2.599	16.27	2.406	0.4114	0.001585	-4	0.950	0.000524  # hc
-# 0.161	0.327	0.190	0.193	7.82	1.153	4.062	0.1845	24.28	3.05	20.93	2.842	0.2759	0.001357	-4	0.916	0.000572  # hd 320 --epochs 2
-
-
-# Training hyperparameters a
-hyp = {'giou': 0.8541,  # giou loss gain
-       'xy': 4.062,  # xy loss gain
-       'wh': 0.1845,  # wh loss gain
-       'cls': 21.61,  # cls loss gain
-       'cls_pw': 1.957,  # cls BCELoss positive_weight
-       'obj': 22.9,  # obj loss gain
-       'obj_pw': 2.894,  # obj BCELoss positive_weight
-       'iou_t': 0.3689,  # iou target-anchor training threshold
-       'lr0': 0.001844,  # initial learning rate
-       'lrf': -4.,  # final learning rate = lr0 * (10 ** lrf)
-       'momentum': 0.913,  # SGD momentum
-       'weight_decay': 0.000467}  # optimizer weight decay
+# 0.161	0.327	0.190	0.193	7.82	1.153	4.062	0.1845	24.28	3.05	20.93	2.842	0.2759	0.001357	-4	0.916	0.000572  # hd 0.438 mAP @ epoch 100
 
 
 # Training hyperparameters d
-# hyp = {'giou': 1.153,  # giou loss gain
+hyp = {'giou': 1.153,  # giou loss gain
+       'xy': 4.062,  # xy loss gain
+       'wh': 0.1845,  # wh loss gain
+       'cls': 24.28,  # cls loss gain
+       'cls_pw': 3.05,  # cls BCELoss positive_weight
+       'obj': 20.93,  # obj loss gain
+       'obj_pw': 2.842,  # obj BCELoss positive_weight
+       'iou_t': 0.2759,  # iou training threshold
+       'lr0': 0.001357,  # initial learning rate
+       'lrf': -4.,  # final LambdaLR learning rate = lr0 * (10 ** lrf)
+       'momentum': 0.916,  # SGD momentum
+       'weight_decay': 0.0000572,  # optimizer weight decay
+       'hsv_s': 0.5,  # image HSV-Saturation augmentation (fraction)
+       'hsv_v': 0.5,  # image HSV-Value augmentation (fraction)
+       'degrees': 5,  # image rotation (+/- deg)
+       'translate': 0.1,  # image translation (+/- fraction)
+       'scale': 0.1,  # image scale (+/- gain)
+       'shear': 2}  # image shear (+/- deg)
+
+
+# # Training hyperparameters e
+# hyp = {'giou': 1.607,  # giou loss gain
 #        'xy': 4.062,  # xy loss gain
 #        'wh': 0.1845,  # wh loss gain
-#        'cls': 24.28,  # cls loss gain
-#        'cls_pw': 3.05,  # cls BCELoss positive_weight
-#        'obj': 20.93,  # obj loss gain
-#        'obj_pw': 2.842,  # obj BCELoss positive_weight
-#        'iou_t': 0.2759,  # iou target-anchor training threshold
-#        'lr0': 0.001357,  # initial learning rate
-#        'lrf': -4.,  # final learning rate = lr0 * (10 ** lrf)
-#        'momentum': 0.916,  # SGD momentum
-#        'weight_decay': 0.000572}  # optimizer weight decay
+#        'cls': 39.27,  # cls loss gain
+#        'cls_pw': 3.726,  # cls BCELoss positive_weight
+#        'obj': 31.26,  # obj loss gain
+#        'obj_pw': 2.634,  # obj BCELoss positive_weight
+#        'iou_t': 0.273,  # iou target-anchor training threshold
+#        'lr0': 0.001542,  # initial learning rate
+#        'lrf': -4.,  # final LambdaLR learning rate = lr0 * (10 ** lrf)
+#        'momentum': 0.8364,  # SGD momentum
+#        'weight_decay': 0.0008393}  # optimizer weight decay
 
 
 def train(cfg,
-          data_cfg,
+          data,
           img_size=416,
           epochs=100,  # 500200 batches at bs 16, 117263 images = 273 epochs
           batch_size=16,
@@ -66,12 +77,12 @@ def train(cfg,
     multi_scale = opt.multi_scale
 
     if multi_scale:
-        img_size_min = round(img_size / 32 / 1.5)
-        img_size_max = round(img_size / 32 * 1.5)
-        img_size = img_size_max * 32  # initiate with maximum multi_scale size
+        img_sz_min = round(img_size / 32 / 1.5)
+        img_sz_max = round(img_size / 32 * 1.5)
+        img_size = img_sz_max * 32  # initiate with maximum multi_scale size
 
     # Configure run
-    data_dict = parse_data_cfg(data_cfg)
+    data_dict = parse_data_cfg(data)
     train_path = data_dict['train']
     nc = int(data_dict['classes'])  # number of classes
 
@@ -79,7 +90,8 @@ def train(cfg,
     model = Darknet(cfg).to(device)
 
     # Optimizer
-    optimizer = optim.SGD(model.parameters(), lr=hyp['lr0'], momentum=hyp['momentum'], weight_decay=hyp['weight_decay'])
+    optimizer = optim.SGD(model.parameters(), lr=hyp['lr0'], momentum=hyp['momentum'], weight_decay=hyp['weight_decay'], nesterov=True)
+    # optimizer = AdaBound(model.parameters(), lr=hyp['lr0'], final_lr=0.1)
 
     cutoff = -1  # backbone reaches to cutoff layer
     start_epoch = 0
@@ -145,6 +157,7 @@ def train(cfg,
                                   img_size,
                                   batch_size,
                                   augment=True,
+                                  hyp=hyp,  # augmentation hyperparameters
                                   rect=opt.rect)  # rectangular training
 
     # Initialize distributed training
@@ -181,7 +194,7 @@ def train(cfg,
     nb = len(dataloader)
     maps = np.zeros(nc)  # mAP per class
     results = (0, 0, 0, 0, 0)  # P, R, mAP, F1, test_loss
-    n_burnin = min(round(nb / 5 + 1), 1000)  # burn-in batches
+    # n_burnin = min(round(nb / 5 + 1), 1000)  # burn-in batches
     t0 = time.time()
     for epoch in range(start_epoch, epochs):
         model.train()
@@ -212,20 +225,22 @@ def train(cfg,
             # Multi-Scale training TODO: short-side to 32-multiple https://github.com/ultralytics/yolov3/issues/358
             if multi_scale:
                 if (i + nb * epoch) / accumulate % 10 == 0:  #  adjust (67% - 150%) every 10 batches
-                    img_size = random.choice(range(img_size_min, img_size_max + 1)) * 32
-                    # print('img_size = %g' % img_size)
-                scale_factor = img_size / max(imgs.shape[-2:])
-                imgs = F.interpolate(imgs, scale_factor=scale_factor, mode='bilinear', align_corners=False)
+                    img_size = random.randrange(img_sz_min, img_sz_max + 1) * 32
+                sf = img_size / max(imgs.shape[2:])  # scale factor
+                if sf != 1:
+                    ns = [math.ceil(x * sf / 32.) * 32 for x in imgs.shape[2:]]  # new shape
+                    imgs = F.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
 
             # Plot images with bounding boxes
             if epoch == 0 and i == 0:
                 plot_images(imgs=imgs, targets=targets, paths=paths, fname='train_batch%g.jpg' % i)
 
             # SGD burn-in
-            if epoch == 0 and i <= n_burnin:
-                lr = hyp['lr0'] * (i / n_burnin) ** 4
-                for x in optimizer.param_groups:
-                    x['lr'] = lr
+            # if epoch == 0 and i <= n_burnin:
+            #     g = (i / n_burnin) ** 4  # gain
+            #     for x in optimizer.param_groups:
+            #         x['lr'] = hyp['lr0'] * g
+            #         x['weight_decay'] = hyp['weight_decay'] * g
 
             # Run model
             pred = model(imgs)
@@ -258,7 +273,7 @@ def train(cfg,
         # Calculate mAP (always test final epoch, skip first 5 if opt.nosave)
         if not (opt.notest or (opt.nosave and epoch < 10)) or epoch == epochs - 1:
             with torch.no_grad():
-                results, maps = test.test(cfg, data_cfg, batch_size=batch_size, img_size=opt.img_size, model=model,
+                results, maps = test.test(cfg, data, batch_size=batch_size, img_size=opt.img_size, model=model,
                                           conf_thres=0.1)
 
         # Write epoch results
@@ -300,14 +315,14 @@ def train(cfg,
 
     # Report time
     print('%g epochs completed in %.3f hours.' % (epoch - start_epoch + 1, (time.time() - t0) / 3600))
-
+    del model, optimizer
     return results
 
 
 def print_mutation(hyp, results):
     # Write mutation results
     a = '%11s' * len(hyp) % tuple(hyp.keys())  # hyperparam keys
-    b = '%11.4g' * len(hyp) % tuple(hyp.values())  # hyperparam values
+    b = '%11.3g' * len(hyp) % tuple(hyp.values())  # hyperparam values
     c = '%11.3g' * len(results) % results  # results (P, R, mAP, F1, test_loss)
     print('\n%s\n%s\nEvolved fitness: %s\n' % (a, b, c))
 
@@ -315,10 +330,16 @@ def print_mutation(hyp, results):
         os.system('gsutil cp gs://%s/evolve.txt .' % opt.bucket)  # download evolve.txt
         with open('evolve.txt', 'a') as f:  # append result
             f.write(c + b + '\n')
+        x = np.unique(np.loadtxt('evolve.txt', ndmin=2), axis=0)  # load unique rows
+        np.savetxt('evolve.txt', x[np.argsort(-fitness(x))], '%11.3g')  # save sort by fitness
         os.system('gsutil cp evolve.txt gs://%s' % opt.bucket)  # upload evolve.txt
     else:
         with open('evolve.txt', 'a') as f:
             f.write(c + b + '\n')
+
+
+def fitness(x):  # returns fitness of hyp evolution vectors
+    return x[:, 2] * 0.5 + x[:, 3] * 0.5  # fitness = weighted combination of mAP and F1
 
 
 if __name__ == '__main__':
@@ -327,7 +348,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', type=int, default=16, help='batch size')
     parser.add_argument('--accumulate', type=int, default=4, help='number of batches to accumulate before optimizing')
     parser.add_argument('--cfg', type=str, default='cfg/yolov3-spp.cfg', help='cfg file path')
-    parser.add_argument('--data-cfg', type=str, default='data/coco_64img.data', help='coco.data file path')
+    parser.add_argument('--data', type=str, default='data/coco_64img.data', help='coco.data file path')
     parser.add_argument('--multi-scale', action='store_true', help='train at (1/1.5)x - 1.5x sizes')
     parser.add_argument('--img-size', type=int, default=416, help='inference size (pixels)')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
@@ -349,7 +370,7 @@ if __name__ == '__main__':
 
     # Train
     results = train(opt.cfg,
-                    opt.data_cfg,
+                    opt.data,
                     img_size=opt.img_size,
                     epochs=opt.epochs,
                     batch_size=opt.batch_size,
@@ -357,33 +378,30 @@ if __name__ == '__main__':
 
     # Evolve hyperparameters (optional)
     if opt.evolve:
-        gen = 1000  # generations to evolve
         print_mutation(hyp, results)  # Write mutation results
-
-        for _ in range(gen):
+        for _ in range(1000):  # generations to evolve
             # Get best hyperparameters
             x = np.loadtxt('evolve.txt', ndmin=2)
-            fitness = x[:, 2] * 0.5 + x[:, 3] * 0.5  # fitness as weighted combination of mAP and F1
-            x = x[fitness.argmax()]  # select best fitness hyps
+            x = x[fitness(x).argmax()]  # select best fitness hyps
             for i, k in enumerate(hyp.keys()):
                 hyp[k] = x[i + 5]
 
             # Mutate
             init_seeds(seed=int(time.time()))
-            s = [.15, .15, .15, .15, .15, .15, .15, .15, .15, .00, .05, .10]  # fractional sigmas
+            s = [.15, .15, .15, .15, .15, .15, .15, .15, .15, .00, .05, .20, .20, .20, .20, .20, .20, .20]  # sigmas
             for i, k in enumerate(hyp.keys()):
                 x = (np.random.randn(1) * s[i] + 1) ** 2.0  # plt.hist(x.ravel(), 300)
-                hyp[k] *= float(x)  # vary by 20% 1sigma
+                hyp[k] *= float(x)  # vary by sigmas
 
             # Clip to limits
-            keys = ['lr0', 'iou_t', 'momentum', 'weight_decay']
-            limits = [(1e-4, 1e-2), (0.00, 0.70), (0.60, 0.95), (0, 0.01)]
+            keys = ['lr0', 'iou_t', 'momentum', 'weight_decay', 'hsv_s', 'hsv_v', 'translate', 'scale']
+            limits = [(1e-4, 1e-2), (0.00, 0.70), (0.60, 0.97), (0, 0.001), (0, .9), (0, .9), (0, .9), (0, .9)]
             for k, v in zip(keys, limits):
                 hyp[k] = np.clip(hyp[k], v[0], v[1])
 
             # Train mutation
             results = train(opt.cfg,
-                            opt.data_cfg,
+                            opt.data,
                             img_size=opt.img_size,
                             epochs=opt.epochs,
                             batch_size=opt.batch_size,
@@ -395,14 +413,14 @@ if __name__ == '__main__':
             # # Plot results
             # import numpy as np
             # import matplotlib.pyplot as plt
-            # a = np.loadtxt('evolve_1000val.txt')
-            # x = a[:, 2] * a[:, 3]  # metric = mAP * F1
+            # a = np.loadtxt('evolve.txt')
+            # x = fitness(a)
             # weights = (x - x.min()) ** 2
-            # fig = plt.figure(figsize=(14, 7))
+            # fig = plt.figure(figsize=(10, 10))
             # for i in range(len(hyp)):
             #     y = a[:, i + 5]
             #     mu = (y * weights).sum() / weights.sum()
-            #     plt.subplot(2, 5, i+1)
+            #     plt.subplot(4, 5, i + 1)
             #     plt.plot(x.max(), mu, 'o')
             #     plt.plot(x, y, '.')
-            #     print(list(hyp.keys())[i],'%.4g' % mu)
+            #     print(list(hyp.keys())[i], '%.4g' % mu)

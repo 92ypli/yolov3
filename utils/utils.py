@@ -23,8 +23,8 @@ np.set_printoptions(linewidth=320, formatter={'float_kind': '{:11.5g}'.format}) 
 cv2.setNumThreads(0)
 
 
-def float3(x):  # format floats to 3 decimals
-    return float(format(x, '.3f'))
+def floatn(x, n=3):  # format floats to n decimals
+    return float(format(x, '.%gf' % n))
 
 
 def init_seeds(seed=0):
@@ -534,11 +534,12 @@ def coco_only_people(path='../coco/labels/val2014/'):
             print(labels.shape[0], file)
 
 
-def select_best_evolve(path='../../Downloads/evolve*.txt'):  # from utils.utils import *; select_best_evolve()
+def select_best_evolve(path='evolve*.txt'):  # from utils.utils import *; select_best_evolve()
     # Find best evolved mutation
     for file in sorted(glob.glob(path)):
         x = np.loadtxt(file, dtype=np.float32)
-        print(file, x[x[:, 2].argmax()])
+        fitness = x[:, 2] * 0.5 + x[:, 3] * 0.5  # weighted mAP and F1 combination
+        print(file, x[fitness.argmax()])
 
 
 def kmeans_targets(path='./data/coco_64img.txt'):  # from utils.utils import *; kmeans_targets()
@@ -627,6 +628,7 @@ def plot_images(imgs, targets, paths=None, fname='images.jpg'):
 
     fig = plt.figure(figsize=(10, 10))
     bs, _, h, w = imgs.shape  # batch size, _, height, width
+    bs = min(bs, 16)  # limit plot to 16 images
     ns = np.ceil(bs ** 0.5)  # number of subplots
 
     for i in range(bs):
