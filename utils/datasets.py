@@ -39,10 +39,11 @@ def exif_size(img):
 
 
 class LoadImages:  # for inference
-    def __init__(self, path, img_size=416):
+    def __init__(self, path, img_size=416, half=False):
+        path = str(Path(path))  # os-agnostic
         files = []
         if os.path.isdir(path):
-            files = sorted(glob.glob('%s/*.*' % path))
+            files = sorted(glob.glob(os.path.join(path, '*.*')))
         elif os.path.isfile(path):
             files = [path]
 
@@ -55,6 +56,7 @@ class LoadImages:  # for inference
         self.nF = nI + nV  # number of files
         self.video_flag = [False] * nI + [True] * nV
         self.mode = 'images'
+        self.half = half  # half precision fp16 images
         if any(videos):
             self.new_video(videos[0])  # new video
         else:
@@ -99,7 +101,7 @@ class LoadImages:  # for inference
 
         # Normalize RGB
         img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB
-        img = np.ascontiguousarray(img, dtype=np.float32)  # uint8 to float32
+        img = np.ascontiguousarray(img, dtype=np.float16 if self.half else np.float32)  # uint8 to fp16/fp32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
 
         # cv2.imwrite(path + '.letterbox.jpg', 255 * img.transpose((1, 2, 0))[:, :, ::-1])  # save letterbox image
@@ -115,8 +117,9 @@ class LoadImages:  # for inference
 
 
 class LoadWebcam:  # for inference
-    def __init__(self, img_size=416):
+    def __init__(self, img_size=416, half=False):
         self.img_size = img_size
+        self.half = half  # half precision fp16 images
         self.cam = cv2.VideoCapture(0)  # local camera
         # self.cam = cv2.VideoCapture('rtsp://192.168.1.64/1')  # IP camera
         # self.cam = cv2.VideoCapture('rtsp://username:password@192.168.1.64/1')  # IP camera with login
@@ -143,7 +146,7 @@ class LoadWebcam:  # for inference
 
         # Normalize RGB
         img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB
-        img = np.ascontiguousarray(img, dtype=np.float32)  # uint8 to float32
+        img = np.ascontiguousarray(img, dtype=np.float16 if self.half else np.float32)  # uint8 to fp16/fp32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
 
         return img_path, img, img0, None
@@ -153,9 +156,11 @@ class LoadWebcam:  # for inference
 
 
 class LoadImagesAndLabels(Dataset):  # for training/testing
-    def __init__(self, path, img_size=416, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False):
+    def __init__(self, path, img_size=416, batch_size=16, augment=False, hyp=None, rect=True, image_weights=False):
+        path = str(Path(path))  # os-agnostic
         with open(path, 'r') as f:
-            self.img_files = [x for x in f.read().splitlines() if os.path.splitext(x)[-1].lower() in img_formats]
+            self.img_files = [x.replace('/', os.sep) for x in f.read().splitlines()  # os-agnostic
+                              if os.path.splitext(x)[-1].lower() in img_formats]
 
         n = len(self.img_files)
         bi = np.floor(np.arange(n) / batch_size).astype(np.int)  # batch index
@@ -210,11 +215,10 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.imgs = [None] * n
         self.labels = [None] * n
         preload_labels = False
-        if preload_labels:
+        if preload_labels or image_weights:
             self.labels = [np.zeros((0, 5))] * n
-            iter = tqdm(self.label_files, desc='Reading labels') if n > 10 else self.label_files
             extract_bounding_boxes = False
-            for i, file in enumerate(iter):
+            for i, file in enumerate(tqdm(self.label_files, desc='Reading labels') if n > 10 else self.label_files):
                 try:
                     with open(file, 'r') as f:
                         l = np.array([x.split() for x in f.read().splitlines()], dtype=np.float32)
@@ -279,9 +283,9 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             r = self.img_size / max(img.shape)  # size ratio
             if self.augment and r < 1:  # if training (NOT testing), downsize to inference shape
                 h, w, _ = img.shape
-                img = cv2.resize(img, (int(w * r), int(h * r)), interpolation=cv2.INTER_AREA)
+                img = cv2.resize(img, (int(w * r), int(h * r)), interpolation=cv2.INTER_LINEAR)  # INTER_LINEAR fastest
 
-            if self.n < 3000:  # cache into memory if image count < 3000
+            if self.n < 5000:  # cache into memory if image count < 5000
                 self.imgs[index] = img
 
         # Augment colorspace
@@ -405,8 +409,8 @@ def letterbox(img, new_shape=416, color=(128, 128, 128), mode='auto'):
         new_unpad = (new_shape, new_shape)
         ratiow, ratioh = new_shape / shape[1], new_shape / shape[0]
 
-    if shape[::-1] != new_unpad:
-        img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_AREA)  # resize
+    if shape[::-1] != new_unpad:  # resize
+        img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_AREA)  # INTER_AREA is better, INTER_LINEAR is faster
     top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
     img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border

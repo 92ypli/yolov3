@@ -1,6 +1,7 @@
 import glob
 import os
 import random
+import shutil
 from pathlib import Path
 
 import cv2
@@ -338,7 +339,7 @@ def build_targets(model, targets):
     nt = len(targets)
     txy, twh, tcls, tbox, indices, anchor_vec = [], [], [], [], [], []
     for i in model.yolo_layers:
-        layer = model.module_list[i][0]
+        layer = model.module_list[i]
 
         # iou of targets-anchors
         t, a = targets, []
@@ -545,6 +546,28 @@ def select_best_evolve(path='evolve*.txt'):  # from utils.utils import *; select
         print(file, x[fitness.argmax()])
 
 
+def coco_single_class_labels(path='../coco/labels/train2014/', label_class=43):
+    # Makes single-class coco datasets. from utils.utils import *; coco_single_class_labels()
+    if os.path.exists('new/'):
+        shutil.rmtree('new/')  # delete output folder
+    os.makedirs('new/')  # make new output folder
+    os.makedirs('new/labels/')
+    os.makedirs('new/images/')
+    for file in tqdm(sorted(glob.glob('%s/*.*' % path))):
+        with open(file, 'r') as f:
+            labels = np.array([x.split() for x in f.read().splitlines()], dtype=np.float32)
+        i = labels[:, 0] == label_class
+        if any(i):
+            img_file = file.replace('labels', 'images').replace('txt', 'jpg')
+            labels[:, 0] = 0  # reset class to 0
+            with open('new/images.txt', 'a') as f:  # add image to dataset list
+                f.write(img_file + '\n')
+            with open('new/labels/' + Path(file).name, 'a') as f:  # write label
+                for l in labels[i]:
+                    f.write('%g %.6f %.6f %.6f %.6f\n' % tuple(l))
+            shutil.copyfile(src=img_file, dst='new/images/' + Path(file).name.replace('txt', 'jpg'))  # copy images
+
+
 def kmeans_targets(path='./data/coco_64img.txt', n=9, img_size=320):  # from utils.utils import *; kmeans_targets()
     # Produces a list of target kmeans suitable for use in *.cfg files
     img_formats = ['.bmp', '.jpg', '.jpeg', '.png', '.tif']
@@ -725,9 +748,27 @@ def plot_evolution_results(hyp):  # from utils.utils import *; plot_evolution_re
     plt.savefig('evolve.png', dpi=200)
 
 
-def plot_results(start=0, stop=0):  # from utils.utils import *; plot_results()
+def plot_results(start=0, stop=0):  # from utils.utils import *; plot_results2()
     # Plot training results files 'results*.txt'
-    # import os; os.system('wget https://storage.googleapis.com/ultralytics/yolov3/results_v3.txt')
+
+    fig, ax = plt.subplots(2, 5, figsize=(14, 7))
+    ax = ax.ravel()
+    s = ['GIoU', 'Confidence', 'Classification', 'Precision', 'Recall',
+         'GIoU val', 'val Confidence', 'val Classification', 'mAP', 'F1']
+    for f in sorted(glob.glob('results*.txt') + glob.glob('../../Downloads/results*.txt')):
+        results = np.loadtxt(f, usecols=[2, 4, 5, 9, 10, 13, 14, 15, 11, 12]).T
+        n = results.shape[1]  # number of rows
+        x = range(start, min(stop, n) if stop else n)
+        for i in range(10):
+            ax[i].plot(x, results[i, x], marker='.', label=f.replace('.txt', ''))
+            ax[i].set_title(s[i])
+    fig.tight_layout()
+    ax[4].legend()
+    fig.savefig('results.png', dpi=200)
+
+
+def plot_results_orig(start=0, stop=0):  # from utils.utils import *; plot_results_orig()
+    # Plot training results files 'results*.txt' in original format
 
     fig, ax = plt.subplots(2, 5, figsize=(14, 7))
     ax = ax.ravel()

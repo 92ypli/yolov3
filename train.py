@@ -14,8 +14,8 @@ from utils.utils import *
 mixed_precision = True
 try:  # Mixed precision training https://github.com/NVIDIA/apex
     from apex import amp
-except:  # not installed: install help: https://github.com/NVIDIA/apex/issues/259
-    mixed_precision = False
+except:
+    mixed_precision = False  # not installed
 
 # 320 --epochs 1
 #      0.109      0.297       0.150       0.126       7.04      1.666      4.062     0.1845       42.6       3.34      12.61      8.338     0.2705      0.001         -4        0.9     0.0005 a  320 giou + best_anchor False
@@ -91,9 +91,10 @@ def train(cfg,
     multi_scale = opt.multi_scale
 
     if multi_scale:
-        img_sz_min = round(img_size / 32 / 1.5)
-        img_sz_max = round(img_size / 32 * 1.5)
+        img_sz_min = round(img_size / 32 / 1.5) + 1
+        img_sz_max = round(img_size / 32 * 1.5) - 1
         img_size = img_sz_max * 32  # initiate with maximum multi_scale size
+        print('Using multi-scale %g - %g' % (img_sz_min * 32, img_size))
 
     # Configure run
     data_dict = parse_data_cfg(data)
@@ -131,7 +132,7 @@ def train(cfg,
             optimizer.load_state_dict(chkpt['optimizer'])
             best_fitness = chkpt['best_fitness']
 
-        if chkpt['training_results'] is not None:
+        if chkpt.get('training_results') is not None:
             with open('results.txt', 'w') as file:
                 file.write(chkpt['training_results'])  # write results.txt
 
@@ -153,7 +154,7 @@ def train(cfg,
     # lf = lambda x: 10 ** (hyp['lrf'] * x / epochs)  # exp ramp
     # lf = lambda x: 1 - 10 ** (hyp['lrf'] * (1 - x / epochs))  # inverse exp ramp
     # scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
-    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[round(opt.epochs * x) for x in [0.8]], gamma=0.1)
+    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[round(opt.epochs * x) for x in [0.8, 0.9]], gamma=0.1)
     scheduler.last_epoch = start_epoch - 1
 
     # # Plot lr schedule
@@ -185,7 +186,8 @@ def train(cfg,
                                   batch_size,
                                   augment=True,
                                   hyp=hyp,  # augmentation hyperparameters
-                                  rect=opt.rect)  # rectangular training
+                                  rect=opt.rect,  # rectangular training
+                                  image_weights=opt.img_weights)
 
     # Dataloader
     dataloader = torch.utils.data.DataLoader(dataset,
@@ -197,7 +199,8 @@ def train(cfg,
 
     # Start training
     model.hyp = hyp  # attach hyperparameters to model
-    # model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device)  # attach class weights
+    if dataset.image_weights:
+        model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device)  # attach class weights
     model_info(model, report='summary')  # 'full' or 'summary'
     nb = len(dataloader)
     maps = np.zeros(nc)  # mAP per class
@@ -219,10 +222,11 @@ def train(cfg,
                 if int(name.split('.')[1]) < cutoff:  # if layer < 75
                     p.requires_grad = False if epoch == 0 else True
 
-        # # Update image weights (optional)
-        # w = model.class_weights.cpu().numpy() * (1 - maps)  # class weights
-        # image_weights = labels_to_image_weights(dataset.labels, nc=nc, class_weights=w)
-        # dataset.indices = random.choices(range(dataset.n), weights=image_weights, k=dataset.n)  # random weighted index
+        # Update image weights (optional)
+        if dataset.image_weights:
+            w = model.class_weights.cpu().numpy() * (1 - maps) ** 2  # class weights
+            image_weights = labels_to_image_weights(dataset.labels, nc=nc, class_weights=w)
+            dataset.indices = random.choices(range(dataset.n), weights=image_weights, k=dataset.n)  # rand weighted idx
 
         mloss = torch.zeros(5).to(device)  # mean losses
         pbar = tqdm(enumerate(dataloader), total=nb)  # progress bar
@@ -276,7 +280,7 @@ def train(cfg,
             mem = torch.cuda.memory_cached() / 1E9 if torch.cuda.is_available() else 0  # (GB)
             s = ('%10s' * 2 + '%10.3g' * 7) % (
                 '%g/%g' % (epoch, epochs - 1), '%.3gG' % mem, *mloss, len(targets), img_size)
-            pbar.set_description(s)  # print(s)
+            pbar.set_description(s)
 
         # Calculate mAP (always test final epoch, skip first 5 if opt.nosave)
         if not (opt.notest or (opt.nosave and epoch < 10)) or epoch == epochs - 1:
@@ -286,10 +290,10 @@ def train(cfg,
 
         # Write epoch results
         with open('results.txt', 'a') as file:
-            file.write(s + '%11.3g' * 5 % results + '\n')  # P, R, mAP, F1, test_loss
+            file.write(s + '%11.3g' * 7 % results + '\n')  # P, R, mAP, F1, test_losses=(GIoU, obj, cls)
 
         # Update best map
-        fitness = results[2]
+        fitness = results[2]  # mAP
         if fitness > best_fitness:
             best_fitness = fitness
 
@@ -330,11 +334,11 @@ def train(cfg,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', type=int, default=100, help='number of epochs')
-    parser.add_argument('--batch-size', type=int, default=16, help='batch size')
-    parser.add_argument('--accumulate', type=int, default=4, help='number of batches to accumulate before optimizing')
+    parser.add_argument('--epochs', type=int, default=273, help='number of epochs')
+    parser.add_argument('--batch-size', type=int, default=32, help='batch size')
+    parser.add_argument('--accumulate', type=int, default=2, help='number of batches to accumulate before optimizing')
     parser.add_argument('--cfg', type=str, default='cfg/yolov3-spp.cfg', help='cfg file path')
-    parser.add_argument('--data', type=str, default='data/coco_64img.data', help='coco.data file path')
+    parser.add_argument('--data', type=str, default='data/coco.data', help='coco.data file path')
     parser.add_argument('--multi-scale', action='store_true', help='train at (1/1.5)x - 1.5x sizes')
     parser.add_argument('--img-size', type=int, default=416, help='inference size (pixels)')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
@@ -346,7 +350,7 @@ if __name__ == '__main__':
     parser.add_argument('--xywh', action='store_true', help='use xywh loss instead of GIoU loss')
     parser.add_argument('--evolve', action='store_true', help='evolve hyperparameters')
     parser.add_argument('--bucket', type=str, default='', help='gsutil bucket')
-    parser.add_argument('--var', default=0, type=int, help='debug variable')
+    parser.add_argument('--img-weights', action='store_true', help='select training images by weight')
     opt = parser.parse_args()
     print(opt)
 
@@ -364,7 +368,7 @@ if __name__ == '__main__':
         if opt.bucket:
             os.system('gsutil cp gs://%s/evolve.txt .' % opt.bucket)  # download evolve.txt if exists
 
-        for _ in range(1):  # generations to evolve
+        for _ in range(100):  # generations to evolve
             if os.path.exists('evolve.txt'):  # if evolve.txt exists: select best hyps and mutate
                 # Get best hyperparameters
                 x = np.loadtxt('evolve.txt', ndmin=2)
